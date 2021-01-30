@@ -8,13 +8,52 @@ import numpy as np
 
 from . import market
 
+PRINT_OFF = 1
 
+#
+c_homecurrency = "CHF"
+
+# CSV Header definition
+c_date="Datum"
+c_time="Uhrze"
+c_value_date="Valutadatum"
+c_product="Produkt"
+c_isin="ISIN"
+c_description="Beschreibung"
+c_fx="FX"
+c_change="Änderung"
+c_saldo="Saldo"
+c_order_id="Order-ID"
 # Header of the Account.csv file from DeGiro export
-CSV_HEADER = "Datum,Tijd,Valutadatum,Product,ISIN,Omschrijving,FX,Mutatie,,Saldo,,Order Id"
+CSV_HEADER = c_date+","+c_time+","+c_value_date+","+c_product+","+c_isin+","+c_description+","+c_fx+","+c_change+","+","+c_saldo+","+","+c_order_id
+# CSV_HEADER = "date,Tijd,Valutadatum,Product,ISIN,Omschrijving,FX,Mutatie,,Saldo,,Order Id"
+
+
+# Description definitions
+# Adding as needed
+c_cashin="Einzahlung"
+c_cashout="Auszahlung"
+
+c_buy="Kauf"
+c_sell="Verkauf"
+
+c_transaction_cost="Transaktionsgebühr"
+
+c_cashfond_pricechange="Geldmarktfonds Preisänderung (CHF)"
+c_cashfond_change="Geldmarktfonds Umwandlung"
+c_interest="Zinsen"
+
+c_dividend = "Dividende"
+c_dividend_tax = "Dividendensteuer"
+
 
 # If any of these words (case agnostic) are found in a shares name, it is considered to be an ETF
 SUBSTRINGS_IN_ETF = ["Amundi", "X-TR", "ETFS", "ISHARES", "LYXOR", "Vanguard", "WISDOMTR"]
 # ... ano others, not complete of course
+# add your own additional ETFs
+TEMP_IN_ETF = ["SPDR","XTRACKERS","ETF"]
+# and adding them to the selection
+SUBSTRINGS_IN_ETF = SUBSTRINGS_IN_ETF + TEMP_IN_ETF
 
 
 def read_account(account_csv: Path) -> Tuple[List[List[str]], datetime.date]:
@@ -34,11 +73,11 @@ def parse_single_row(row: List[str], dates: Sequence[datetime.date], date_index:
 
     date, _, _, name, isin, description, _, currency, mutation_string, _, _, _ = row
     mutation = float(mutation_string.replace(",", ".")) if mutation_string != '' else 0.0
-    currency_modifier = market.to_euro_modifier(currency, dates)[date_index] if currency not in ("", "EUR") else 1
+    currency_modifier = market.to_homecurrency_modifier(currency, dates)[date_index] if currency not in ("", c_homecurrency) else 1
 
     # ----- Cash in and out -----
 
-    if description in ("iDEAL storting", "Storting"):
+    if description == c_cashin:
         if bank_cash[date_index] > mutation:
             bank_cash[date_index:] -= mutation
         else:
@@ -46,13 +85,13 @@ def parse_single_row(row: List[str], dates: Sequence[datetime.date], date_index:
             cash[date_index:] += (mutation - bank_cash[date_index])
             bank_cash[date_index:] = 0
 
-    elif description in ("Terugstorting",):
+    elif description == c_cashout:
         bank_cash[date_index:] -= mutation
 
     # ----- Buying and selling -----
 
-    elif description.split(" ")[0] in ("Koop", "Verkoop"):
-        buy_or_sell = "sell" if description.split(" ")[0] == "Verkoop" else "buy"
+    elif description.split(" ")[0] in (c_buy, c_sell):
+        buy_or_sell = "sell" if description.split(" ")[0] == c_sell else "buy"
         multiplier = -1 if buy_or_sell == "sell" else 1
         num_shares = int(description.split(" ")[1].replace(".", ""))
         is_etf = any([etf_subname.lower() in name.lower() for etf_subname in SUBSTRINGS_IN_ETF])
@@ -71,7 +110,7 @@ def parse_single_row(row: List[str], dates: Sequence[datetime.date], date_index:
 
     # ----- DeGiro usage costs -----
 
-    elif description == "DEGIRO transactiekosten":
+    elif description == c_transaction_cost:
         cash[date_index:] += mutation
 
     elif "DEGIRO Aansluitingskosten" in description:
@@ -85,15 +124,15 @@ def parse_single_row(row: List[str], dates: Sequence[datetime.date], date_index:
 
     # ----- Dividend -----
 
-    elif description == "Dividend":
+    elif description == c_dividend:
         cash[date_index:] += mutation * currency_modifier
 
-    elif "dividendbelasting" in description.lower():
+    elif description == c_dividend_tax:
         cash[date_index:] += mutation * currency_modifier
 
     # ----- Implications of cash on the DeGiro account -----
 
-    elif "Koersverandering geldmarktfonds" in description:
+    elif c_cashfond_pricechange in description:
         cash[date_index:] += mutation * currency_modifier
 
     elif description == "DEGIRO Geldmarktfondsen Compensatie":
@@ -102,10 +141,10 @@ def parse_single_row(row: List[str], dates: Sequence[datetime.date], date_index:
     elif description == "Fondsuitkering":
         cash[date_index:] += mutation * currency_modifier
 
-    elif description == "Rente":
+    elif description == c_interest:
         cash[date_index:] += mutation * currency_modifier
 
-    elif "Conversie geldmarktfonds" in description:
+    elif c_cashfond_change in description:
         pass  # Nothing to do?
 
     # ----- Others -----
@@ -113,7 +152,7 @@ def parse_single_row(row: List[str], dates: Sequence[datetime.date], date_index:
     elif description in ("Valuta Creditering", "Valuta Debitering"):
         pass  # Nothing to do - already taken into account?
 
-    else:
+    elif PRINT_OFF == 0:
         print(f"[DGPC] {date}: Unsupported type of entry '{description}', contents:")
         print(row)
 

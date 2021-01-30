@@ -11,8 +11,9 @@ from pandas import DataFrame
 
 
 # Countries to consider in order of preference for etf/stock information
-PREFERRED_COUNTRIES = ["netherlands", "united states", "united kingdom"]
+PREFERRED_COUNTRIES = ["germany", "united states", "united kingdom", "france","switzerland"]
 
+c_homecurrency="CHF"
 
 def densify_history(history_df: DataFrame, dates: Sequence[datetime.date]) -> np.ndarray:
     """Expand the history data to include every date in the 'dates' array."""
@@ -32,15 +33,16 @@ def densify_history(history_df: DataFrame, dates: Sequence[datetime.date]) -> np
 
 
 @functools.lru_cache()
-def to_euro_modifier(currency: str, dates: Tuple[datetime.date]) -> np.ndarray:
-    """Retrieves currency-to-EUR conversion for the given dates. Cached to make sure this is only queried once for
+def to_homecurrency_modifier(currency: str, dates: Tuple[datetime.date]) -> np.ndarray:
+    """Retrieves currency-to-HOMECURRENCY conversion for the given dates. Cached to make sure this is only queried once for
     a given currency & date-range."""
     from_date = dates[0].strftime("%d/%m/%Y")
     to_date = (dates[-1] + datetime.timedelta(days=7)).strftime("%d/%m/%Y")
-    history = investpy.get_currency_cross_historical_data(currency_cross=f"EUR/{currency}",
+    history = investpy.get_currency_cross_historical_data(currency_cross=f"CHF/{currency}",
                                                           from_date=from_date, to_date=to_date)
     history = history.reset_index()
     values = densify_history(history, dates)
+
     return 1 / values
 
 
@@ -83,8 +85,8 @@ def get_data_by_isin(isin: str, dates: Tuple[datetime.date], is_etf: bool) -> Tu
     values = densify_history(history, dates)
 
     # Convert the results to euro
-    if currency != "EUR":
-        currency_modifier = to_euro_modifier(currency, tuple(dates))
+    if currency != "CHF":
+        currency_modifier = to_homecurrency_modifier(currency, tuple(dates))
         values *= currency_modifier
 
     return values, symbol
